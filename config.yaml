@@ -1,0 +1,224 @@
+# ==============================================================================
+# STUDY CONFIGURATION: PRICED RISK IN CORPORATE BONDS
+# Dickerson, Mueller, Robotti (2023) — Replication Protocol
+# ==============================================================================
+
+# --------------------------------------------------------------------------
+# TEMPORAL AND SAMPLE CONTROL
+# --------------------------------------------------------------------------
+sample_controls:
+  main_sample:
+    start: "2002-07-31"
+    end: "2016-12-31"
+    factor_test_window: ["2004-08-31", "2016-12-31"]   # 149 months
+    bond_panel_months: 174
+    target_n_factors: 149
+  month_end_def:
+    # "end of month" condition: bond must trade in the last 5 business days
+    last_window_days: 5
+    # "beginning of month" fallback: first 5 business days of next month
+    first_window_days: 5
+  risk_free_rate_source: "Kenneth French (RF series)"
+
+# --------------------------------------------------------------------------
+# TRADE CLEANING PARAMETERS (Enhanced TRACE)
+# --------------------------------------------------------------------------
+trace_cleaning:
+  settlement_days_keep: ["002", "001", "000", "None"]  # days_to_sttl_ct kept values
+  remove_when_issued: true
+  remove_locked_in: true
+  keep_sale_conditions: ["None", "@"]
+  price_floor: 5.0
+  price_ceiling: 1000.0
+  volume_floor: 10000                      # entrd_vol_qt >= 10000
+  # Dick-Nielsen (2014) algorithm: use orig_msg_seq_nb & msg_seq_nb to remove
+  # cancellations/corrections; keep latest version; also remove as-of trades
+  dick_nielsen_clean: true
+  as_of_removal: true                      # UNSPECIFIED IN MANUSCRIPT – standard Dick-Nielsen step
+
+# --------------------------------------------------------------------------
+# FISD BOND FILTERS (same as rules listed in Appendix)
+# --------------------------------------------------------------------------
+fisd_filters:
+  domicile: "USA"
+  private_placement_remove: true
+  foreign_currency_remove: true
+  rule144a_remove: true
+  asset_backed_remove: true
+  convertible_remove: true
+  coupon_type_keep: ["F", "Z"]           # fixed or zero
+  interest_freq_exclude: [-1, 13, 14, 15, 16]
+  bond_type_remove: ["equity-linked", "agency-backed", "US Government", "mortgage-backed"]
+  remove_missing_accrual_fields: true
+  amount_outstanding_fill: "face_value_at_issuance"
+
+# --------------------------------------------------------------------------
+# ACCRUED INTEREST AND RETURN COMPUTATION
+# --------------------------------------------------------------------------
+accrued_interest:
+  day_count_convention_map:
+    1: "30/360"
+    2: "Actual/Actual"
+    3: "Actual/360"
+    4: "Actual/365"
+
+# --------------------------------------------------------------------------
+# ILLIQUIDITY COMPUTATION (Bao-Pan-Wang)
+# --------------------------------------------------------------------------
+illiq:
+  max_intertrade_gap_bizdays: 7       # <= 7 business days between consecutive trades
+  min_paired_obs: 5
+  winsorize: true
+  winsorize_bounds: [0.005, 0.005]   # 0.5% in each tail
+
+# --------------------------------------------------------------------------
+# VaR5 COMPUTATION
+# --------------------------------------------------------------------------
+var5:
+  rolling_window_months: 36
+  min_obs: 24
+  percentile_rank: [5.0]          # second lowest corresponds to ~5% in a 24-36 sample
+
+# --------------------------------------------------------------------------
+# FACTOR CONSTRUCTION — BBW FOUR FACTORS
+# --------------------------------------------------------------------------
+factor_construction:
+  mktb:
+    weight_col: "amount_outstanding"
+    lag_weight: 1                        # use amount outstanding at end of month t-1
+  drf:
+    sort1: "rating_quintile"
+    sort2: "var5_quintile"
+    aggregation: "equal_weighted_average_of_across_rating_quintiles"
+  lrf:
+    sort1: "rating_quintile"
+    sort2: "illiq_quintile"
+    aggregation: "equal_weighted_average_of_across_rating_quintiles"
+  crf:
+    sub_components: ["CRF_VaR", "CRF_ILLIQ", "CRF_REV"]
+    aggregation: "simple_average"
+    CRF_VaR_basis: "VaR5 solo-quintile portfolios"
+    CRF_ILLIQ_basis: "ILLIQ solo-quintile portfolios"
+    CRF_REV_basis: "REV solo-quintile portfolios (REV = r_{i,t-1})"
+  rev_definition: "r_{i,t-1} (prior-month excess return)"
+
+# --------------------------------------------------------------------------
+# TEST PORTFOLIOS
+# --------------------------------------------------------------------------
+test_portfolios:
+  rating: 5
+  maturity: 5
+  credit_spread: 10
+  industry: 12
+  total_N: 32
+  value_weighted: true
+  credit_spread_lookback: "t-12 to t-1 (average)"  # one-month lag
+  credit_spread_def: "YTM_i,t - interpolated Treasury yield for matching maturity"
+
+# --------------------------------------------------------------------------
+# TRADED FACTOR MODELS (additional)
+# --------------------------------------------------------------------------
+additional_traded_factors:
+  DEF: "return on long-term corporate bonds minus long-term government bonds"
+  TERM: "return on long-term government bonds minus T-bill"
+  MKTS: "equity market excess return (from French)"
+  CPTLT: "traded intermediary capital factor (from HKM)"
+
+# --------------------------------------------------------------------------
+# MIMICKING PORTFOLIOS
+# --------------------------------------------------------------------------
+mimicking_portfolios:
+  basis_assets: [
+    "MKTB", "DRF", "CRF", "LRF",
+    "MKTS", "SMB", "HML", "DEF", "TERM", "CPTLT"
+  ]
+  total_basis: 10
+  nontraded_factors:
+    UNC: "ΔUNC (monthly change)"
+    CPTL: "nontraded intermediary capital (log change)"
+    PS: "Pástor-Stambaugh liquidity factor (bond-level)"
+    AM: "Amihud liquidity factor (bond-level)"
+    VIX: "ΔVIX (first difference)"
+
+# --------------------------------------------------------------------------
+# LONG-RUN CONSUMPTION (LRC)
+# --------------------------------------------------------------------------
+lrc:
+  frequency: "quarterly"
+  compounding_to_monthly: true   # compound quarterly factor to monthly using cube root
+  bootstrap_reps: 5000
+  bootstrap_block_length: null    # UNSPECIFIED IN MANUSCRIPT – block length for overlapping data; use 8 quarters as placeholder
+  basis_assets_sets:
+    EJN_basis: "6 bond portfolios (3 maturity x 2 rating)"
+    DMR_basis: "10 traded factors (as in mimicking portfolio basis)"
+
+# --------------------------------------------------------------------------
+# ALPHA / SHARPE RATIO INFERENCE
+# --------------------------------------------------------------------------
+performance_tests:
+  risk_free_rate: 0                          # excess returns, so zero-beta rate test to zero
+  heteroskedasticity_robust: true
+  nw_lags: 3                           # Newey-West lags used for standard errors
+  squared_sharpe_bias_adj_traded: " (T-K-2)/T * Sh^2 - K/T "
+  squared_sharpe_mimicking_bias_adj: "jackknife (BKRS Prop 3)"
+  model_comparison_method: "BKRS (2020) asymptotic covariance"
+
+# --------------------------------------------------------------------------
+# CROSS-SECTIONAL REGRESSION (TWO-PASS)
+# --------------------------------------------------------------------------
+two_pass_csr:
+  gls_weight_matrix: "Sigma_residual_inv (inverse of first-pass residual covariance)"
+  ols_r2_def: "1 - (eta'eta)/(rbar'rbar)"
+  gls_r2_def: "1 - (eta' W eta)/(rbar' W rbar)"
+  shanken_correction: true
+  misspecification_robust_t: true
+  test_R2_equals_1: true
+  rank_tests: "Kan-Robotti (2012) for identification; GLS robust to weak factors per Gospodinov-Robotti (2021b)"
+
+# --------------------------------------------------------------------------
+# Fama-MacBeth BOND-LEVEL ANALYSIS
+# --------------------------------------------------------------------------
+fama_macbeth:
+  pre_ranking_window: 36
+  pre_ranking_min_obs: 24
+  post_ranking_n_port: 5
+  post_ranking_portfolio_weighting: "equal"
+  beta_method:
+    MKTB: "single-factor regression (CAPM)"
+    "DRF, CRF, LRF": "bivariate with MKTB"
+    other models: "multiple regression with all factors in the model"
+  fm_nw_lags: 12
+
+# --------------------------------------------------------------------------
+# ROBUSTNESS CHECKS
+# --------------------------------------------------------------------------
+robustness:
+  alternative_portfolios: [
+    "25 size-rating",
+    "25 size-maturity",
+    "25 credit-spread",
+    "30 FF industries"
+  ]
+  duration_adjusted_returns: false       # available upon request
+  extended_sample_to_1986: false         # implemented in supplementary analysis
+  alternative_databases:
+    WRDS: true
+    ICE: true
+
+# --------------------------------------------------------------------------
+# NUMERICAL VERIFICATION (CONVENTIONS)
+# --------------------------------------------------------------------------
+numerical_conventions:
+  percent_returns: true                # all returns and factors in percent per month
+  bond_ratings_numeric: "1 = AAA, ..., 22 = D"
+  amount_outstanding_units: "thousands of USD"
+  industry_mapping: "FISD industry codes -> Fama-French 12 industries; mapping table not provided in study"
+
+# --------------------------------------------------------------------------
+# UNSPECIFIED IN MANUSCRIPT – PLACEHOLDER VALUES
+# --------------------------------------------------------------------------
+unspecified_placeholders:
+  sic_major_groups_for_industry_portfolios: []   # exactly 12 groups, but codes not enumerated
+  treasury_yield_interpolation_method: "linear"  # standard; not explicit in study
+  bootstrap_block_length_lrc: 8                   # reasonable quarterly blocks
+  lm_lrc_basis_assets_selection: "as in EJN"     # not fully described in current paper
