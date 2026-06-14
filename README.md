@@ -647,3 +647,7 @@ For the implementation itself, you may cite this repository:
 
 -   Credit to **Alexander Dickerson, Philippe Mueller, and Cesare Robotti** for the foundational theoretical framework, the rigorous econometric design, and the exposure of data-construction errors in prior literature.
 -   This project is built upon the exceptional tools provided by the open-source community. Sincere thanks to the developers of the scientific Python ecosystem, particularly the **NumPy**, **Pandas**, **SciPy**, and **Statsmodels** contributors.
+
+--
+
+*This README was generated based on the structure and content of the `priced_risk_in_corporate_bonds_draft.ipynb` notebook and follows best practices for research software documentation.*
