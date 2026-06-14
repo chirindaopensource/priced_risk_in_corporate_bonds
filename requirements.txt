@@ -1,0 +1,148 @@
+# ==============================================================================
+# requirements.txt
+# Project  : Priced Risk in Corporate Bonds
+# Author   : CS Chirinda
+# License  : MIT
+# Version  : 1.0.0
+# Python   : >=3.10
+#
+# Reference:
+#   Dickerson, A., Mueller, P., & Robotti, C. (2023).
+#   Priced Risk in Corporate Bonds.
+#   Journal of Financial Economics, 150(2), 103707.
+#   https://arxiv.org/abs/2604.05699
+#
+# Repository:
+#   https://github.com/chirindaopensource/priced_risk_in_corporate_bonds
+#
+# ── VERSION PINNING PHILOSOPHY ────────────────────────────────────────────────
+# Every lower bound is derived from a specific API feature required by the
+# implementation (see inline comments). Every upper bound is set at the next
+# major version boundary to block breaking API changes while permitting all
+# patch-level security and bug-fix releases within the validated minor series.
+#
+# Standard-library modules (os, json, copy, logging, typing) ship with
+# CPython >=3.10 and are intentionally absent from this file.
+#
+# Install: pip install -r requirements.txt
+# ==============================================================================
+
+
+# ── CORE NUMERICAL & SCIENTIFIC STACK ─────────────────────────────────────────
+
+# numpy
+# Lower bound 1.24.0:
+#   numpy.lib.stride_tricks.sliding_window_view was introduced in NumPy 1.20.0
+#   (NEP 23). Used for rolling ILLIQ covariance windows (Bao-Pan-Wang 2011).
+#   1.24.0 is the first long-term-support minor release post-1.20 with a stable
+#   stride-tricks API and corrected integer-overflow behaviour in window offsets.
+# Upper bound <3.0.0:
+#   NumPy 2.0 introduced breaking changes to default integer dtype promotion
+#   (NEP 50). The codebase has not yet been validated against the 2.x series.
+numpy>=1.24.0,<3.0.0
+
+# pandas
+# Lower bound 2.0.0:
+#   pandas.merge_asof with direction='backward' (point-in-time temporal
+#   alignment, essential for preventing look-ahead bias in factor merges) is
+#   stable since 0.20, but the Copy-on-Write semantics that prevent silent
+#   chained-assignment mutations in the panel construction steps were introduced
+#   as opt-in in 2.0.0. pandas.tseries.holiday.USFederalHolidayCalendar and
+#   pandas.tseries.offsets.CustomBusinessDay are stable since 0.14.
+# Upper bound <3.0.0:
+#   Pandas 3.0 will enforce Copy-on-Write unconditionally and remove several
+#   deprecated APIs (e.g., append(), DataFrame.swaplevel signature changes).
+pandas>=2.0.0,<3.0.0
+
+# scipy
+# Lower bound 1.10.0:
+#   scipy.optimize.brentq   — Brent root-finding for Newton-Raphson YTM solver.
+#   scipy.stats.mstats.winsorize — Tail winsorisation of bond-level ILLIQ.
+#   scipy.interpolate.interp1d  — Treasury yield-curve interpolation.
+#   scipy.stats              — Chi-square, F, and normal CDFs for KRS/BKRS tests.
+#   All four APIs are stable and unflagged at >=1.10.0.
+# Upper bound <2.0.0:
+#   scipy.interpolate.interp1d is formally deprecated in SciPy 1.12 and will
+#   be removed in SciPy 2.0. Cap below 2.0.0 until interp1d callers are
+#   migrated to scipy.interpolate.make_interp_spline.
+scipy>=1.10.0,<2.0.0
+
+# statsmodels
+# Lower bound 0.14.0:
+#   statsmodels.api (OLS, GLS, add_constant) for two-pass cross-sectional
+#   regressions and Fama-MacBeth monthly slope estimation.
+#   The HAC covariance estimator (cov_type='HAC', cov_kwds={'maxlags': 12})
+#   reached full API stability and consistent results at 0.13.0.
+#   0.14.0 adds full Python 3.10 compatibility and resolves a known GLS
+#   variance-covariance accumulation issue present in 0.13.x.
+# Upper bound <1.0.0:
+#   The pre-1.0 API remains the maintained stable branch; a 1.0 release would
+#   signal a potentially breaking public-API revision.
+statsmodels>=0.14.0,<1.0.0
+
+
+# ── VISUALISATION ─────────────────────────────────────────────────────────────
+
+# matplotlib
+# Lower bound 3.7.0:
+#   matplotlib.pyplot for Figure 1 (factor time-series overlays) and Figure 2
+#   (mean-variance frontier with tangency lines). No exotic subplot APIs are
+#   required; 3.7.0 is chosen as the stable LTS base of the 3.x series with
+#   consistent Axes.set_xlabel / set_ylabel keyword handling.
+# Upper bound <4.0.0:
+#   matplotlib 4.0 is expected to remove the globally mutable rcParams-mutating
+#   pyplot.style context manager API used for publication-quality figure styling.
+matplotlib>=3.7.0,<4.0.0
+
+
+# ── DATE & TIME UTILITIES ─────────────────────────────────────────────────────
+
+# python-dateutil
+# Lower bound 2.8.2:
+#   dateutil.relativedelta.relativedelta is used for month-offset arithmetic
+#   in rolling-window beta estimation and coupon-period boundary detection.
+#   2.8.2 resolves a DST-boundary edge case in relativedelta that could
+#   silently misalign month-end dates around US daylight-saving transitions.
+# Upper bound <3.0.0:
+#   python-dateutil is also a hard transitive dependency of pandas>=2.0.0.
+#   Explicit pinning prevents pip from silently downgrading it to a version
+#   incompatible with the pandas C extension datetime internals.
+# Note:
+#   python-dateutil is a transitive dependency of pandas>=2.0.0 and will
+#   always be installed; explicit pinning here prevents silent downgrades.
+python-dateutil>=2.8.2,<3.0.0
+
+
+# ── CONFIGURATION MANAGEMENT ──────────────────────────────────────────────────
+
+# PyYAML
+# Lower bound 6.0.0:
+#   yaml.safe_load() is called in load_study_configuration() to ingest the
+#   config.yaml master parameter file. PyYAML 6.0 introduced the LibYAML-backed
+#   CSafeLoader as the default for safe_load on Python 3.10+, and resolved
+#   CVE-2020-14343 (arbitrary code execution via yaml.load without Loader).
+#   Any version below 6.0 must be considered a security vulnerability in a
+#   research codebase that may ingest externally sourced YAML configs.
+# Upper bound <7.0.0:
+#   Stability constraint; no 7.x series exists at time of writing.
+PyYAML>=6.0.0,<7.0.0
+
+
+# ── SYNTHETIC DATA GENERATION (TESTING ONLY) ──────────────────────────────────
+
+# Faker
+# Lower bound 18.0.0:
+#   Faker is used exclusively in the synthetic data generation step
+#   (generate_synthetic_bond_data) to produce realistic CUSIP strings,
+#   issuer names, and dates for pipeline integration testing without
+#   proprietary WRDS data. Faker 18.0.0 is the first release with full
+#   Python 3.10 keyword-argument compatibility in its core Provider API.
+# Upper bound <26.0.0:
+#   Caps at the next anticipated major version boundary; the Faker API is
+#   internally version-tagged and breaking changes occur at major bumps.
+# Note:
+#   This package is a DEV/TEST dependency only. For production deployments
+#   against live WRDS data, Faker can be safely omitted. Consider moving it
+#   to a separate requirements-dev.txt in a future refactor.
+Faker>=18.0.0,<26.0.0
+
